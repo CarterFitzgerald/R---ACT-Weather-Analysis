@@ -1,0 +1,272 @@
+---
+title: "Assignment 2, Part B"
+author: "Carter Fitzgerald"
+date: "2023-10-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Part B - Data Wrangling			(33 marks)
+
+**Perform the following tasks**
+
+1. 1. Load the `act_weather_data_partA.csv` into a data frame or a tibble, named, `act_weather_data`. (1 mark)
+
+```{r, eval=TRUE}
+library(tidyverse)
+library(dplyr)
+library(Metrics)
+library(modeest)
+library(lubridate)
+library(ggplot2)
+library(gridExtra)
+
+
+act_weather_data <- read_csv("act_weather_data_partA.csv")
+```
+
+2. Print the summary including the (minimum, median, mean, maximum) of each of the following variables: (5 marks)
+  + `Minimum_temperature`,
+  + `Maximum_temperature`,
+  + ` 9am_Temperature`,
+  + ` Speed_of_maximum_wind_gust_(km/h)`, and
+  + `3pm_Temperature`
+
+```{r, eval=TRUE}
+summary(act_weather_data$Minimum_temperature)
+summary(act_weather_data$Maximum_temperature)
+summary(act_weather_data$'9am_Temperature')
+summary(act_weather_data$'Speed_of_maximum_wind_gust_(km/h)')
+summary(act_weather_data$'3pm_Temperature')
+```
+
+3. Based on the minimum and maximum temperature columns, compute the average temperature per month. Please note that we have 52 months provided in the data, so there will be 52 generated values. (4 marks)
+
+```{r, eval=TRUE}
+act_weather_data$Date <- as.Date(act_weather_data$Date, format = "%d/%m/%Y")
+
+# Calculate daily average temperature
+monthly_avg_temperature <- act_weather_data %>%
+  mutate(Year = year(Date), Month = month(Date)) %>%
+  group_by(Year, Month) %>%
+  summarise(Avg_Monthly_Temperature = mean((Maximum_temperature + Minimum_temperature) / 2))
+
+monthly_avg_temperature
+```
+
+4. What is the average speed of maximum wind gust for each group of the direction of maximum wind gust? (2 marks)
+
+```{r, eval=TRUE}
+# Group the data by the direction of maximum wind gust and calculate the average speed
+wind_data <- act_weather_data %>%
+  group_by(Direction_of_maximum_wind_gust) %>%
+  summarise(Avg_Speed_of_maximum_wind_gust = mean(`Speed_of_maximum_wind_gust_(km/h)`, na.rm = TRUE))
+
+print(wind_data)
+```
+
+5. Which month has the highest average rain fall? And in which year? (2 marks) 
+- ( _hint:_ in this question you may use group_by, summarise and which.max functions)
+
+```{r, eval=TRUE}
+# Calculate the average rainfall
+rain_data <- act_weather_data %>%
+  group_by(Year, Month) %>%
+  summarize(Avg_Rainfall = mean(`Rainfall_(mm)`, na.rm = TRUE))
+
+# Find row with the highest average rainfall
+max_rainfall_row <- rain_data[which.max(rain_data$Avg_Rainfall), ]
+
+# Get Year and Month with the highest average rainfall
+highest_rainfall_year <- max_rainfall_row$Year
+highest_rainfall_month <- max_rainfall_row$Month
+
+cat("The month with the highest average rainfall is in Year:", highest_rainfall_year, "Month:", highest_rainfall_month)
+```
+
+6. Which month was the driest in average, ( _i.e._, least amount of rainfall in average)? And in which year? (3 marks)
+
+```{r, eval=TRUE}
+# Calculate the average rainfall
+result <- act_weather_data %>%
+  group_by(Year, Month) %>%
+  summarize(Avg_Rainfall = mean(`Rainfall_(mm)`, na.rm = TRUE))
+
+# Find row with the lowest average rainfall
+min_rainfall_row <- result[which.min(result$Avg_Rainfall), ]
+
+# Get Year and Month with the lowest average rainfall
+driest_month_year <- min_rainfall_row$Year
+driest_month <- min_rainfall_row$Month
+
+cat("The driest month in terms of average rainfall is in Year:", driest_month_year, "Month:", driest_month)
+```
+
+7. For the humidity, which month was receiving highest humidity level, in average, in the 2019 year? (3 marks)
+
+```{r, eval=TRUE}
+# Filter the data for the year 2019
+data_2019 <- act_weather_data %>% filter(Year == 2019)
+
+# Calculate the average of 9am and 3pm humidity
+result <- data_2019 %>%
+  group_by(Month) %>%
+  summarize(Avg_Humidity = mean(c(`9am_relative_humidity_(%)`, `3pm_relative_humidity_(%)`), na.rm = TRUE))
+
+# Find= row with the highest average combined humidity
+max_humidity_row <- result[which.max(result$Avg_Humidity), ]
+
+# Get Month with the highest average combined humidity
+highest_humidity_month <- max_humidity_row$Month
+
+cat("The month in 2019 with the highest average combined humidity level (9am and 3pm) is Month:", highest_humidity_month)
+```
+
+8. For the period between August 2020 and July 2021 inclusive, Can you generate a summary table showing the minimum, maximum and average temperature (please use the `3 pm temperature` column), wind speed and humidity for each month and each quarter in the year? (5 marks)
+
+```{r, eval=TRUE}
+# Filter the data for the period between August 2020 and July 2021
+data_aug2020_jul2021 <- act_weather_data %>%
+  filter(Year == 2020 & Month >= 8 | Year == 2021 & Month <= 7)
+
+# Group the filtered data by Year, Quarter, and Month, and calculate the statistics
+summary_table <- data_aug2020_jul2021 %>%
+  group_by(Year, Quarter = cut(Month, breaks = c(0, 3, 6, 9, 12), labels = c("Q1", "Q2", "Q3", "Q4")), Month) %>%
+  summarise(
+    Min_Temp = min(`3pm_Temperature`, na.rm = TRUE),
+    Max_Temp = max(`3pm_Temperature`, na.rm = TRUE),
+    Avg_Temp = mean(`3pm_Temperature`, na.rm = TRUE),
+    Min_WindS = min(`3pm_wind_speed_(km/h)`, na.rm = TRUE),
+    Max_WindS = max(`3pm_wind_speed_(km/h)`, na.rm = TRUE),
+    Avg_WindS = mean(`3pm_wind_speed_(km/h)`, na.rm = TRUE),
+    Min_Hum = min(`3pm_relative_humidity_(%)`, na.rm = TRUE),
+    Max_Hum = max(`3pm_relative_humidity_(%)`, na.rm = TRUE),
+    Avg_Hum = mean(`3pm_relative_humidity_(%)`, na.rm = TRUE)
+  )
+
+# Combine each quarter's data together
+quarterly_summary_table <- summary_table %>%
+  group_by(Year, Quarter) %>%
+  summarize(
+    Min_Temperature = min(Min_Temp),
+    Max_Temperature = max(Max_Temp),
+    Avg_Temperature = mean(Avg_Temp),
+    Min_Wind_Speed = min(Min_WindS),
+    Max_Wind_Speed = max(Max_WindS),
+    Avg_Wind_Speed = mean(Avg_WindS),
+    Min_Humidity = min(Min_Hum),
+    Max_Humidity = max(Max_Hum),
+    Avg_Humidity = mean(Avg_Hum)
+  )
+
+quarterly_summary_table
+summary_table
+```
+
+9. Build graph(s) that show the distribution of the variables in the question #8. (5 marks)
+- ( _hint:_ There will be six graphs where each of them include distributions of minimum, maximum and average of variables temperature, wind speed or humidity per month and quarter.
+
+```{r, eval=TRUE}
+monthly_summary_table <- summary_table %>%
+  filter(!is.na(Month))
+
+month_order <- c("Jan 21", "Feb 21", "Mar 21", "Apr 21", "May 21", "Jun 21", "Jul 21", "Aug 20", "Sept 20", "Oct 20", "Nov 20", "Dec 20")
+
+# Creates Line graph for temperature
+temperature_monthly <- ggplot(monthly_summary_table, aes(x = Month)) +
+  geom_line(aes(y = Max_Temp, color = "Max Temp")) +
+  geom_line(aes(y = Min_Temp, color = "Min Temp")) +
+  geom_line(aes(y = Avg_Temp, color = "Avg Temp")) +
+  labs(title = "Min, Max & Avg Temperature by Month (August 2020 to July 2021)",
+       x = "Month",
+       y = "Temperature (°C)") +
+  scale_color_manual(values = c("Max Temp" = "red", "Min Temp" = "blue", "Avg Temp" = "green")) +
+  scale_x_discrete(limits = month_order) +
+  theme_light()
+
+# Creates Line graph for Humidity
+humidity_monthly <- ggplot(monthly_summary_table, aes(x = Month)) +
+  geom_line(aes(y = Max_Hum, color = "Max Humidity")) +
+  geom_line(aes(y = Min_Hum, color = "Min Humidity")) +
+  geom_line(aes(y = Avg_Hum, color = "Avg Humidity")) +
+  labs(title = "Min, Max & Avg Humidity by Month (August 2020 to July 2021)",
+       x = "Month",
+       y = "Humidity (%)") +
+  scale_color_manual(values = c("Max Humidity" = "red", "Min Humidity" = "blue", "Avg Humidity" = "green")) +
+  scale_x_discrete(limits = month_order) +
+  theme_light()
+
+# Creates Line graph for Wind Speed
+wind_speed_monthly <- ggplot(monthly_summary_table, aes(x = Month)) +
+  geom_line(aes(y = Max_WindS, color = "Max Wind Speed")) +
+  geom_line(aes(y = Min_WindS, color = "Min Wind Speed")) +
+  geom_line(aes(y = Avg_WindS, color = "Avg Wind Speed")) +
+  labs(title = "Min, Max & Avg Wind Speed by Month (August 2020 to July 2021)",
+       x = "Month",
+       y = "Wind Speed (km/h)") +
+  scale_color_manual(values = c("Max Wind Speed" = "red", "Min Wind Speed" = "blue", "Avg Wind Speed" = "green")) +
+  scale_x_discrete(limits = month_order) +
+  theme_light()
+
+# Filter the data for quarters
+quarterly_temperature_summary_table <- summary_table %>%
+  filter(!is.na(Quarter))
+
+temperature_quarterly_box_data <- quarterly_summary_table %>%
+  pivot_longer(cols = starts_with("Min_Temperature"), names_to = "Statistic", values_to = "Temperature")
+
+# Creates Line graph for temperature (Quarterly)
+temperature_quarterly_line <- ggplot(quarterly_summary_table, aes(x = Quarter, group = 1)) +
+  geom_line(aes(y = Min_Temperature, color = "Min Temp")) +
+  geom_line(aes(y = Max_Temperature, color = "Max Temp")) +
+  geom_line(aes(y = Avg_Temperature, color = "Avg Temp")) +
+  labs(title = "Min, Max & Avg Temperature by Quarter (August 2020 to July 2021)",
+       x = "Quarter",
+       y = "Temperature (°C)") +
+  scale_color_manual(values = c("Max Temp" = "red", "Min Temp" = "blue", "Avg Temp" = "green")) +
+  theme_light()
+
+# Creates Line graph for HUmidity (Quarterly)
+humidity_quarterly_line <- ggplot(quarterly_summary_table, aes(x = Quarter, group = 1)) +
+  geom_line(aes(y = Min_Humidity, color = "Min Humidity")) +
+  geom_line(aes(y = Max_Humidity, color = "Max Humidity")) +
+  geom_line(aes(y = Avg_Humidity, color = "Avg Humidity")) +
+  labs(title = "Min, Max & Avg Humidity by Quarter (August 2020 to July 2021)",
+       x = "Quarter",
+       y = "Humidity (%)") +
+  scale_color_manual(values = c("Max Humidity" = "red", "Min Humidity" = "blue", "Avg Humidity" = "green")) +
+  theme_light()
+
+# Creates Line graph for Wind Speed (Quarterly)
+wind_speed_quarterly_line <- ggplot(quarterly_summary_table, aes(x = Quarter, group = 1)) +
+  geom_line(aes(y = Min_Wind_Speed, color = "Min Wind Speed")) +
+  geom_line(aes(y = Max_Wind_Speed, color = "Max Wind Speed")) +
+  geom_line(aes(y = Avg_Wind_Speed, color = "Avg Wind Speed")) +
+  labs(title = "Min, Max & Avg Wind Speed by Quarter (August 2020 to July 2021)",
+       x = "Quarter",
+       y = "Wind Speed (Km/h)") +
+  scale_color_manual(values = c("Max Wind Speed" = "red", "Min Wind Speed" = "blue", "Avg Wind Speed" = "green")) +
+  theme_light()
+
+print(temperature_monthly)
+print(humidity_monthly)
+print(wind_speed_monthly)
+
+print(temperature_quarterly_line)
+print(humidity_quarterly_line)
+print(wind_speed_quarterly_line)
+
+```
+
+10. Provide a narrative to describe your thoughts on the generated graphs from your answer of question #9 (3 marks)
+
+**Description goes below**
+
+For Question 9, I created a series of graphs to visualize the distribution of weather variables over the period from August 2020 to July 2021. These graphs can help us gain insights into the patterns and changes in temperature, wind speed, and humidity both on a monthly and quarterly basis. I created 6 graphs which all plot the maximum, minimum and average of there respective variable. I have 3 graphs for monthly each looks a different variable (Temp, Humidity & Wind Speed) and the other 3 are the same, except instead of monthly they are quarterly.   
+
+Personally, I think the monthly graphs, provide a greater understanding of the data and provide more useful data, due to the increased range of the graphs. It allows us to better analysis patterns and trends in the data. In comparison, the quarterly graphs are very simple and can give you an idea of the climate at a glance. 
+
+----

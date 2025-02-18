@@ -1,0 +1,139 @@
+---
+title: "Assignment 2, Part A"
+author: "Carter Fitzgerald"
+date: "2023-10-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Part A - Data Importing and Cleaning			(15 marks)
+
+The following code can be used to load the data and merge them all into one data frame, Please run it and then perform the tasks below.
+
+```{r, eval=TRUE}
+library(tidyverse)
+library(dplyr)
+library(Metrics)
+library(modeest)
+library(hms)
+
+AU_Date_Format <- "%d/%m/%Y"
+US_Date_Format <- "%m/%d/%Y"
+files <- list.files("data","*.csv")
+act_weather_data <- tibble()
+
+for(i in 1:length(files)){
+  data <- read_csv(paste0("data/", files[i]), skip= 7, show_col_types = FALSE)
+  assertthat::assert_that(nrow(problems(data)) == 0, 
+                  msg="There is still problem/s, which you need to fix first")
+
+  temp <- tryCatch(
+            expr    = {  parse_date(data$Date, AU_Date_Format)}, 
+            warning = function(e) { parse_date(data$Date, US_Date_Format)})
+  
+
+  data$Date <- format(temp, AU_Date_Format)
+
+  act_weather_data <- rbind(act_weather_data, data)
+}
+
+# Clean up any temporary variables no longer needed
+rm(files, data, temp, i)
+
+act_weather_data <- act_weather_data %>%
+  mutate(`9am_wind_speed_(km/h)` = ifelse(`9am_wind_speed_(km/h)` == "Calm", 0, `9am_wind_speed_(km/h)`),
+         `3pm_wind_speed_(km/h)` = ifelse(`3pm_wind_speed_(km/h)` == "Calm", 0, `3pm_wind_speed_(km/h)`))
+
+```
+
+**Perform the following tasks** 
+
+1. Run the following code to demonstrate the loading of the data has been executed correctly. Provide an explanation in words what each line does (3 marks):
+```{r eval=TRUE}
+dim(act_weather_data)
+
+str(act_weather_data)
+
+act_weather_data %>% group_by(Date) %>% summarise(count=n()) %>%
+                     summarise(max = max(count))
+
+act_weather_data %>% summarise_all(funs(sum(is.na(.)))) %>% 
+                     gather() %>% filter(value > 0)
+```
+
+**Solution**
+
+The first function dim, provides the dimensions of the data frame in this case the act_weather_data which is storing our weather data from August 2018 to March 2023. The dim function provides the dimensions this means the rows and cols in the data frame. In this case 1582 rows, 21 cols.
+
+The second function str, provides the structure of the data frame, this esentially provides details of how the data frame is structured which basically means it covers the details of each column. It provides the data type and example data from each column. 
+
+The third function is a function to check for duplicate data, checking for duplicate dates. Basiacally it groups the df by date then counts the number of data in each group and then it finds the maximum count for a group. Since we shouldn't have any duplicate days this should all be 1.
+
+The fourth function is checking the data frame to find and display all the "NA" data included in the df. The first part of the function gets all the "NA"s for each variable in the data set, gather gives each variable a row and its number or "NA"s and finally filter gets rid of any variables with no "NA"s.
+
+----
+
+2. Remove the variables, which have no data at all (i.e. all the records in these variables are NAs) (3 marks)
+
+```{r, eval=TRUE}
+act_weather_data <- act_weather_data[, colSums(is.na(act_weather_data)) < nrow(act_weather_data)]
+
+```
+
+----
+
+3. Replace NA values with either the average of its column's values, if they are numeric, or mode if they are categorical. (4 marks)
+
+```{r, eval=TRUE}
+# Create a function to calculate the mode for non-numeric columns
+calculate_mode <- function(x) {
+  if (is.factor(x) || is.character(x)) {
+    freq_table <- table(x)
+    mode_value <- as.character(names(freq_table[freq_table == max(freq_table)]))
+    return(mode_value)
+  }
+  # Return NA for numeric columns
+  return(NA)
+}
+
+# Function to replace "NA" values with the mean (numeric) or mode (categorical)
+replace_na_with_summary <- function(x) {
+  if (is.numeric(x)) {
+    x[is.na(x)] <- mean(x, na.rm = TRUE)  # Replace with column mean for numeric variables
+  } else if (is.factor(x) || is.character(x)) {
+    x[is.na(x)] <- calculate_mode(x)  # Replace with mode for categorical variables
+  } else if (is.hms(x)) {
+    x[is.na(x)] <- as.hms(mean(as.numeric(x), na.rm = TRUE))  # Replace with mean for "hms" columns
+  }
+  return(x)
+}
+
+act_weather_data <- act_weather_data %>% mutate_all(replace_na_with_summary)
+```
+
+----
+4.	Add two new columns to represent months (`Month`) and years (`Year`) of the data, you may extract the contents of this column from the `Date` column. (2 marks)
+
+```{r, eval=TRUE}
+act_weather_data$Date <- dmy(act_weather_data$Date)
+act_weather_data$Month <- month(as.Date(act_weather_data$Date))
+act_weather_data$Year <- year(as.Date(act_weather_data$Date))
+```
+
+5. Change the type of the `Month` and `Year` columns to Ordinal with levels as the number of months in a year (i.e. 12) and number of years (i.e., 6). (2 marks)
+
+```{r, eval=TRUE}
+act_weather_data$Month <- factor(act_weather_data$Month, levels = 1:12, ordered = TRUE)
+act_weather_data$Year <- factor(act_weather_data$Year, levels = unique(act_weather_data$Year), ordered = TRUE)
+```
+
+6. Save the weather data to a single file named `act_weather_data_partA.csv`. (1 marks)
+
+```{r, eval=TRUE}
+write.csv(act_weather_data, file = "act_weather_data_partA.csv", row.names = FALSE)
+```
+
+*** 

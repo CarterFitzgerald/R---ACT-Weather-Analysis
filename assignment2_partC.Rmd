@@ -1,0 +1,246 @@
+---
+title: "Assignment 2, Part C"
+author: "Carter Fitzgerald"
+date: "2023-10-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Part C - Insights			(17 marks)
+
+**Perform the following tasks**
+
+1. There is a claim that the climate-change phenomenon has been hitting the ACT region over the last 4 years. Using the `act_weather_data`, can you help the authorities validate whether this claim is correct or not? (6 marks)
+
+- ( _hint:_ This is an open question, where the claim can be checked and validated via different ways. Please explain your strategy and final insights with evidences (i.e., graphs). You may search for extra data from the public repository to support your final thoughts. )
+
+
+```{r, eval=TRUE}
+library(tidyverse)
+library(dplyr)
+library(Metrics)
+library(modeest)
+library(hms)
+
+act_weather_data <- read_csv("act_weather_data_partA.csv")
+
+act_weather_last_4_years <- act_weather_data %>%
+  filter((Year >= 2019 & Month >= 4) | (Year > 2019) | (Year == 2019 & Month == 3))
+
+# Group the data by Year and Month
+monthly_summary <- act_weather_last_4_years %>%
+  group_by(Year, Month) %>%
+  summarise(
+    Avg_Temperature = mean(`3pm_Temperature`, na.rm = TRUE),
+    Avg_Rainfall = mean(`Rainfall_(mm)`, na.rm = TRUE)
+  )
+
+yearly_summary <- monthly_summary %>%
+  group_by(Year) %>%
+  summarise(Avg_Temperature = mean(Avg_Temperature, na.rm = TRUE))
+
+# Create a matrix with years as columns, to display average temp
+yearly_matrix <- yearly_summary %>%
+  pivot_wider(names_from = Year, values_from = Avg_Temperature)
+
+
+month_order <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec")
+
+# Create graph for monthly avg temp
+temperature_monthly_plot <- ggplot(monthly_summary, aes(x = Month, y = Avg_Temperature, color = as.factor(Year))) +
+  geom_path(size = 1) +
+  labs(title = "Monthly Average Temperature Over the Last 4 Years in ACT @3pm",
+       x = "Month",
+       y = "Average Temperature (°C)") +
+  scale_x_discrete(limits = month_order) +
+  theme_light()
+
+print(temperature_monthly_plot)
+cat("Yearly Average Temperatures\n")
+print(yearly_matrix)
+
+```
+
+A good indicator for climate change is temperature (source linked at end), and as you can see from looking at the graph provided above, there is no substantial evidence that over the last 4 years, the ACT has been hit by the climate-change phenomenon. As you can see the temperatures were highest in 2020 & 2019 in every month except Aug. Therefore, we can see that actually the data over the last four years indicates a decrease in the average temperature across the ACT. Looking at the yearly Temperature matrix we can see the direct values for this change, (note 2019, missing 3 hottest months, 2023, missing all of winter, only includes 3 hot months) are that 2019 & 2020 were the hottest on average excluding 2023, which has limited data. Since 2020 the temperature has dropped 2.5 degrees to 2022's average temperature. https://www.epa.gov/climate-indicators/weather-climate#:~:text=Rising%20global%20average%20temperature%20is,with%20human%2Dinduced%20climate%20change
+
+
+
+2. The ACT Transport Sector is seeking to use this data to understand when the ACT road construction should be going ahead and when it should be stopped. Also, the sector plans to build a time plan over the year to fix potholes after rain seasons, can you help them building analysis of which times in the year that this would be perfect? (6 marks)
+
+
+
+```{r, eval=TRUE}
+monthly_summary_2 <- act_weather_data %>%
+  group_by(Year, Month) %>%
+  summarise(
+    Avg_Temperature = mean(`3pm_Temperature`, na.rm = TRUE),
+    Avg_Rainfall = mean(`Rainfall_(mm)`, na.rm = TRUE)
+  )
+
+month_order <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec")
+
+# Create graph for monthly avg temp
+temperature_monthly_plot <- ggplot(monthly_summary_2, aes(x = Month, y = Avg_Temperature, color = as.factor(Year))) +
+  geom_path(size = 1) +
+  labs(title = "Monthly Average Temperature Over the Last 4 Years in ACT @3pm",
+       x = "Month",
+       y = "Average Temperature (°C)") +
+  scale_x_discrete(limits = month_order) +
+  theme_light()
+
+# Create graph for monthly avg rainfall
+rainfall_monthly_plot <- ggplot(monthly_summary_2, aes(x = Month, y = Avg_Rainfall, color = as.factor(Year))) +
+  geom_path(size = 1) +
+  labs(title = "Monthly Average Rainfall Over the Last 4 Years in ACT @3pm",
+       x = "Month",
+       y = "Average Rainfall (mm)") +
+  scale_x_discrete(limits = month_order) +
+  theme_light()
+
+monthly_summary_2 <- monthly_summary_2 %>%
+  mutate(Date = as.Date(paste(Year, Month, "01", sep = "-")))
+
+# Create time series objects
+ts_data <- ts(monthly_summary_2$Avg_Temperature, frequency = 12, start = c(2019, 1))
+ts_data_1 <- ts(monthly_summary_2$Avg_Rainfall, frequency = 12, start = c(2019, 1))
+
+# Perform seasonal decomposition
+decomposed <- decompose(ts_data)
+decomposed_rain <- decompose(ts_data_1)
+
+monthly_summary_2 <- monthly_summary_2 %>%
+  mutate(Combined_Score = Avg_Temperature - 2 * Avg_Rainfall)
+
+# Summarize the scores for each month across all years
+monthly_summary_summary <- monthly_summary_2 %>%
+  group_by(Month) %>%
+  summarise(Avg_Score = mean(Combined_Score))
+
+# Identify the top four months with the highest scores
+top_months <- monthly_summary_summary %>%
+  arrange(desc(Avg_Score)) %>%
+  head(4)
+
+print(temperature_monthly_plot)
+print(rainfall_monthly_plot)
+cat("Seasonal Decomposition of Average Temperature")
+plot(decomposed)
+cat("Seasonal Decomposition of Average Rainfall")
+plot(decomposed_rain)
+
+cat("This table displays a score for each month, based on all available data which is generated by subtracting (2*rainfall) from the temperature. (Higher is better)")
+print(monthly_summary_summary)
+
+month_mapping <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec")
+best_months <- top_months$Month
+best_months_names <- month_mapping[best_months]
+cat("The best four months for roadwork are:", paste(best_months_names, collapse = ", "), "\n")
+cat("We can also determine the best months for each season:", "\n"
+    , "Summer: Janurary", "\n"
+    , "Autumn: March", "\n"
+    , "Winter: July", "\n"
+    , "Spring: November", "\n")
+
+```
+
+After some research it appears to be that the ideal time for road construction is a warm/hot temperature with no rain. This is because the temperature is used to cure the asphalt/concrete but to hot and it can set to quick and crack, no rain is because it can wash away materials and the road and form potholes. I have produced some graphs above which analyse weather data for the ACT over the months August 2018 till March 2023. Looking at the graph we can see that the average temperature is fairly reasonable during all months but winter. The rainfall graph looks a bit messy with all the data but we can see that the ACT gets a spread of rain throughout all months of the year. By utilising some time series decomposition graphs I can get a more detailed analysis into the patterns created by the data. We can see that in 2020 the average temperature was increasing but since has trended down, we can also see the average temperature follows a strong pattern which allows our predictions to be more accurate. The rainfall decomposition is more interesting, we can see that the average rainfall has been trending upward since 2020, which will make road construction plans more difficult we can also see that a slight pattern has formed where the rainfall falls during autumn till winter, then beings to rapidly increase at the end of winter/spring, peaking in summer. Finally, for my analysis I evaluated each month's temp and rainfall giving them a score with hotter being better and no rain being best. Then I combined the scores over the years and print a table with the scores for each month, the results were all of summer and Mar as the best months, the biggest contributing factor was the increased average temperatures. As road works can always be planned around the upcoming rainfall, however not having high enough temperatures to cure the concrete wont change overnight like rainfall can, therefore I tend to agree with the data. I also analysed the data to get the best month for construction each season and the results can be seen above. With this analysis in mind here is my basic plan for the ACT Transport Sector.
+
+From my analysis major roadworks done in the ACT should be conducted from spring to early autumn, ideally during late spring throughout summer as this is when temperatures for curing concrete are ideal and workers can avoid frost and such. However, over the last 4-5 years the average rainfall has been steadily increasing (especially during the recommended months), so roadworks will have to be planned around upcoming weather as, rain can wash away progress or affect the structure of the road. Regarding planning around potholes, the heaviest rain season appears to be spring and late winter. Therefore the best opportunities for major pothole filling come in summer and autumn where the average rainfall is lower and temps are high allowing the asphalt to cure. Note, by fixing potholes in a timely manner throughout the entire in dry conditions you can prevent further rain and vehicles from increasing the damage to the road making the repaving procedure more complex and costly, as well as having to wait for the more ideal repair seasons.
+
+
+3. As a data scientist, you need to practice extracting insights and valuable information from the analysis you conduct on the data. This can be done by posing some real-world problems or decisions that can be solved by doing some analysis on this data. For this task list at least **2 (two)** problems that can be solved by running analysis on this data set, if you are undergraduate student. Otherwise, generate at least **4 (four)** problems that can be solved by running analysis on this data set. (5 marks)
+
+**Solution** 
+
+**Decision/Problem_1** In horticulture: Is it commercially viable to grow grapes for wine production in the ACT? If so what weather factors do farmers have to keep an eye on? 
+
+**Knowledge** "grapes flower in spring, producing their crop throughout summer"[How to grow and prune grapevines - bunnings Australia (no date) Bunnings Australia. Available at: https://www.bunnings.com.au/diy-advice/garden/planting-and-growing/how-to-grow-and-care-for-grapevines (Accessed: 13 October 2023).] "The overall optimum temperature grapevine growth is 77 and 90 degrees F (25 to 32°C). Any temperature below this optimum range causes vegetative growth to become limited. Warmer temperatures in general tend to produce more consistent grape harvests. Lack of rainfall can be a severe influence on grape productivity in the absence of good quality irrigation water. Johnson and Robinson (2001) recommend a minimum level of rainfall/irrigation of 20 inches (500 mm), higher if the growing season is characterized by high evapotranspiration rates. Excess rainfall is also a problem and most quality wines are produced in regions where annual rainfall does not exceed 28 to 32 inches (700 to 800 mm) (Jackson et al., 1987). Wind - Light breezes maintain air circulation around the berries stopping the buildup of humidity and maintaining an even temperature within the canopy. However, high winds can cause serious damage to grapevines, especially to vines in the spring and early summer, when shoots are tender and more easily broken." [Vineyard site selection (no date) Grape Grower’s Handbook: A Guide To Viticulture for Wine Production. Available at: https://www.wine-grape-growing.com/wine_grape_growing/vineyard_site_selection/vineyard_site_selection_climatic_components.htm (Accessed: 13 October 2023).] 
+
+**Information Needed** Average temperature throughout spring and Summer, average yearly rainfall, average wind speed seasonally.
+
+```{r}
+spring_summer_data <- act_weather_data %>%
+  filter(Month %in% c("9", "10", "11", "12", "1", "2")) %>%  # Spring and Summer months
+  group_by(Month) %>%
+  summarize(
+    Avg_Temperature = mean((`3pm_Temperature`)),
+    Avg_Rainfall = mean(`Rainfall_(mm)`),
+    Avg_Wind_Speed = mean((`9am_wind_speed_(km/h)` + `3pm_wind_speed_(km/h)`) / 2)
+  )
+
+ggplot(spring_summer_data, aes(x = Month)) +
+  geom_line(aes(y = Avg_Temperature, color = "Average Temperature"), size = 1) +
+  geom_line(aes(y = Avg_Rainfall, color = "Rainfall"), size = 1) +
+  geom_line(aes(y = Avg_Wind_Speed, color = "Wind Speed"), size = 1) +
+  labs(
+    x = "Month",
+    y = "Temp (°C), Wind (km/h), Rain (mm)",
+  ) +
+  scale_x_discrete(limits = month_order) +
+  scale_color_manual(values = c("Average Temperature" = "blue", "Rainfall" = "green", "Wind Speed" = "purple")) +
+  theme_minimal()
+
+yearly_rainfall <- act_weather_data %>%
+  filter(Year != 2023, Year != 2018) %>%
+  group_by(Year) %>%
+  summarize(
+    Total_Rainfall = sum(`Rainfall_(mm)`)
+  )
+
+print(yearly_rainfall)
+
+mean_yearly_rainfall <- mean(yearly_rainfall$Total_Rainfall)
+print(mean_yearly_rainfall)
+```
+
+
+**Conclusion** In conclusion we can see that while the temperatures for the ACT are on the colder side for grape growing, it is just within the range. The above analysis shows, the average temps during spring and summer range from (16 - 28 degrees) while this is on the colder side, due to the rapid increase in temperature it is within reason to say the temperature is suitable for growing certain varieties of grape for making wine. Furthermore, I analysed the rainfall for all complete years and got an overall average of 677mm, which is just below the maximum rainfall range, it also tends to peak in spring which is ideal during the growth phase of the grapes.Finally wind, the average wind in the ACT during spring and summer ranges from about (14-17 km/h) which is reasonable not to expect wind to cause major damage to the vines. Therefore, while grapes can be grown in the ACT for wine making, it isn't the ideal climate and won't produce spectacular wine. Farmers, have to keep an eye out for high winds and frost which could damage the wine, as well as high rainfall during the harvest season which could ruin the harvest for the season.
+
+**Decision/Problem_2** In horticulture: Can rice be grown commercially in the ACT? If so when is the best season for planting?
+
+**Knowledge** "Originally from tropical regions, rice is a warm-season crop that requires constant heat and humidity to grow. It can be cultivated as an annual in warm climates, though, even if you don’t reside in the tropics. During the growing season, the best temperature for rice is between 70°F and 99°F (21°C and 37°C). It is possible to grow it only where nighttime lows stay at 60°F (15°C) or higher for a minimum of three months annually. How come it’s so important? Germination is temperature-dependent, so the lows for the growing crop must always be above that mark. The water needs of growing rice far exceed those of any other crop. Thus, only in locations with a minimum annual rainfall of 45 inches (115 cm) does rice growing take place. The best growing conditions can be found in areas where yearly rainfall is between 69 and 118 inches (175 and 300 cm) on average. Paddies must be inundated for at least 10 weeks during the growing season, with water depths ranging from 1 inch (25 mm) at the transplanting stage to as much as 6 inches (150 mm) throughout the crop life cycle." [Kogut, P. (2023) How to grow rice: Planting, care, &amp; harvesting practices, EOS Data Analytics. Available at: https://eos.com/blog/how-to-grow-rice/ (Accessed: 14 October 2023). ] "Humidity should range somewhere from 60 - 85%." [De Silva, R. and Dayawansa, N.D.K. (2016) Assessment of the suitability of temperature and relative humidity for rice cultivation in rainfed lowland paddy fields in Kurunegala district, Research Gate. Available at: https://www.researchgate.net/publication/319227475_Assessment_of_the_suitability_of_temperature_and_relative_humidity_for_rice_cultivation_in_rainfed_lowland_paddy_fields_in_Kurunegala_district (Accessed: 13 October 2023).]
+
+**Information Needed** Monthly average heat and humidity chart, monthly low temperature average, Annual Rainfall and average rainfall across months charted.
+
+```{r}
+spring_summer_data_2 <- act_weather_data %>%
+  filter(Month %in% c("9", "10", "11", "12", "1", "2")) %>%  # Spring and Summer months
+  group_by(Month) %>%
+  summarize(
+    Avg_Min_Temp = mean(`Minimum_temperature`),
+    Avg_Temperature = mean((`3pm_Temperature`)),
+    Avg_Rainfall = mean(`Rainfall_(mm)`),
+    Avg_Humidity = mean((`9am_relative_humidity_(%)` + `3pm_relative_humidity_(%)`) / 2),
+    )
+
+ggplot(spring_summer_data_2, aes(x = Month)) +
+  geom_line(aes(y = Avg_Min_Temp, color = "Average Min Temperature"), size = 1) +
+  geom_line(aes(y = Avg_Temperature, color = "Average Temperature"), size = 1) +
+  geom_line(aes(y = Avg_Rainfall, color = "Rainfall"), size = 1) +
+  geom_line(aes(y = Avg_Humidity, color = "Humidity"), size = 1) +
+  labs(
+    x = "Month",
+    y = "Temp (°C), Humidity (%), Rain (mm)",
+  ) +
+  scale_x_discrete(limits = month_order) +
+  scale_color_manual(values = c("Average Min Temperature" = "red", "Average Temperature" = "blue", "Rainfall" = "green", "Humidity" = "purple")) +
+  theme_minimal()
+
+yearly_rainfall <- act_weather_data %>%
+  filter(Year != 2023, Year != 2018) %>%
+  group_by(Year) %>%
+  summarize(
+    Total_Rainfall = sum(`Rainfall_(mm)`)
+  )
+
+print(yearly_rainfall)
+
+mean_yearly_rainfall <- mean(yearly_rainfall$Total_Rainfall)
+print(mean_yearly_rainfall)
+```
+
+
+**Conclusion** In Conclusion, the analysis from the graph above, indicates quite clearly that growing rice in the ACT is not a good idea. Looking at the graph we can see how the average minimum temperature breaks the minimum allowed (15 degrees) in all months except, Dec - Apr, furthermore, the average temperature throughout the year is right on the low end of the recommended temperature (21 - 37 degrees), since it is a tropical plant, the hotter the better and the ACT is just scraping in ranging from (18 - 28 degrees), noting it is only peaking in temperatures during summer. The humidity is also outside the range required (60 - 85%), the ACT's range is around (49 - 59%). Finally, the rainfall required (1750 - 3000mm), the ACT is well out of this range at 677mm per year on average, less than half the required. Furthermore, since it is an inland region, it could be difficult to import/divert water away to grow rice, which could have significant impacts on the regions climate. Therefore, the conclusion to be drawn from the analysis is it's a bad idea to attempt to grow rice commercially in the ACT, the climate is well outside the range for effective rice growth. 
